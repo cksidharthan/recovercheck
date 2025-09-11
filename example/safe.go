@@ -1,6 +1,10 @@
 package example
 
-import "log"
+import (
+	"log"
+
+	"github.com/cksidharthan/recovercheck/example/pkg"
+)
 
 func SafeGoroutine() {
 	go func() {
@@ -13,17 +17,9 @@ func SafeGoroutine() {
 	}()
 }
 
-func panicRecover() func() {
-	return func() {
-		if r := recover(); r != nil {
-			log.Println("Recovered from panic:", r)
-		}
-	}
-}
-
 func SafeGoroutine2() {
 	go func() {
-		defer panicRecover()
+		defer pkg.PanicRecover()
 		panic("oh no")
 	}()
 }
