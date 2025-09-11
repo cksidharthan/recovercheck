@@ -2,7 +2,7 @@ package analyzer
 
 import (
 	"go/ast"
-	"slices"
+	"strings"
 
 	"golang.org/x/tools/go/analysis"
 	"golang.org/x/tools/go/analysis/passes/inspect"
@@ -22,9 +22,14 @@ func New() *analysis.Analyzer {
 func run(pass *analysis.Pass) (any, error) {
 	insp := pass.ResultOf[inspect.Analyzer].(*inspector.Inspector)
 
-	// First, collect all function declarations that contain recover() calls
+	// Collect all function declarations that contain recover() calls
+	// Key format: "packageName.FunctionName" for cross-package, "FunctionName" for same package
 	recoverFunctions := make(map[string]bool)
 	
+	// For cross-package recovery detection, we'll use a heuristic approach
+	// Functions with names containing "recover", "panic", "safe", etc. are likely recovery functions
+	
+	// Also analyze functions in the current package
 	insp.Nodes([]ast.Node{(*ast.FuncDecl)(nil)}, func(node ast.Node, push bool) bool {
 		if !push {
 			return false
@@ -118,12 +123,38 @@ func hasRecoverInCall(call *ast.CallExpr, recoverFunctions map[string]bool) bool
 		}
 	}
 
+	// Check for cross-package function calls (e.g., pkg.PanicRecover)
+	if sel, ok := call.Fun.(*ast.SelectorExpr); ok {
+		funcName := sel.Sel.Name
+		// Use heuristic: functions with "recover", "panic", "safe" in name are likely recovery functions
+		if isLikelyRecoveryFunction(funcName) {
+			return true
+		}
+		// Also check if we have explicit knowledge of this function
+		if pkgIdent, ok := sel.X.(*ast.Ident); ok {
+			key := pkgIdent.Name + "." + funcName
+			if recoverFunctions[key] {
+				return true
+			}
+		}
+	}
+
 	// Function literal that might contain recover - this is the key pattern
 	if funcLit, ok := call.Fun.(*ast.FuncLit); ok {
 		return containsRecoverAnywhere(funcLit.Body)
 	}
 
 	return false
+}
+
+// isLikelyRecoveryFunction uses heuristics to determine if a function name suggests recovery logic
+func isLikelyRecoveryFunction(funcName string) bool {
+	lowerName := strings.ToLower(funcName)
+	return strings.Contains(lowerName, "recover") ||
+		strings.Contains(lowerName, "panic") ||
+		strings.Contains(lowerName, "safe") ||
+		strings.Contains(lowerName, "rescue") ||
+		strings.Contains(lowerName, "catch")
 }
 
 // containsRecoverAnywhere does a deep search for recover() calls in any context
@@ -153,7 +184,12 @@ func hasRecoverInFunctionBody(body *ast.BlockStmt) bool {
 		return false
 	}
 
-	return slices.ContainsFunc(body.List, hasRecoverInStatement)
+	for _, stmt := range body.List {
+		if hasRecoverInStatement(stmt) {
+			return true
+		}
+	}
+	return false
 }
 
 // hasRecoverInStatement checks if a statement contains recover()
@@ -191,8 +227,10 @@ func hasRecoverInExpression(expr ast.Expr) bool {
 			return true
 		}
 		// Check function arguments
-		if slices.ContainsFunc(e.Args, hasRecoverInExpression) {
-			return true
+		for _, arg := range e.Args {
+			if hasRecoverInExpression(arg) {
+				return true
+			}
 		}
 	case *ast.BinaryExpr:
 		return hasRecoverInExpression(e.X) || hasRecoverInExpression(e.Y)
