@@ -17,9 +17,24 @@ func SafeGoroutine() {
 	}()
 }
 
+func sameFileRecover() func() {
+	return func() {
+		if r := recover(); r != nil {
+			log.Println("Recovered from panic:", r)
+		}
+	}
+}
+
 func SafeGoroutine2() {
 	go func() {
 		defer pkg.PanicRecover()
+		panic("oh no")
+	}()
+}
+
+func SafeGoroutine3() {
+	go func() {
+		defer sameFileRecover()
 		panic("oh no")
 	}()
 }
