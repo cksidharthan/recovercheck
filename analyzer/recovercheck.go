@@ -22,6 +22,23 @@ func New() *analysis.Analyzer {
 func run(pass *analysis.Pass) (any, error) {
 	insp := pass.ResultOf[inspect.Analyzer].(*inspector.Inspector)
 
+	// First, collect all function declarations that contain recover() calls
+	recoverFunctions := make(map[string]bool)
+	
+	insp.Nodes([]ast.Node{(*ast.FuncDecl)(nil)}, func(node ast.Node, push bool) bool {
+		if !push {
+			return false
+		}
+		
+		funcDecl := node.(*ast.FuncDecl)
+		if funcDecl.Name != nil && funcDecl.Body != nil {
+			if containsRecoverAnywhere(funcDecl.Body) {
+				recoverFunctions[funcDecl.Name.Name] = true
+			}
+		}
+		return false
+	})
+
 	insp.Nodes([]ast.Node{(*ast.GoStmt)(nil)}, func(node ast.Node, push bool) bool {
 		if !push {
 			return false
@@ -34,7 +51,7 @@ func run(pass *analysis.Pass) (any, error) {
 		}
 
 		// Check if the goroutine has recover logic
-		if !hasRecoverLogic(goStmt.Call) {
+		if !hasRecoverLogic(goStmt.Call, recoverFunctions) {
 			pass.Reportf(goStmt.Pos(), "goroutine created without panic recovery")
 		}
 
@@ -45,10 +62,10 @@ func run(pass *analysis.Pass) (any, error) {
 }
 
 // hasRecoverLogic checks if a function call or function literal contains defer recover() logic
-func hasRecoverLogic(call *ast.CallExpr) bool {
+func hasRecoverLogic(call *ast.CallExpr, recoverFunctions map[string]bool) bool {
 	// Check if it's a function literal (anonymous function)
 	if funcLit, ok := call.Fun.(*ast.FuncLit); ok {
-		return hasRecoverInFunction(funcLit.Body)
+		return hasRecoverInFunction(funcLit.Body, recoverFunctions)
 	}
 
 	// For function calls, we can't analyze the function body without more complex analysis
@@ -67,7 +84,7 @@ func hasRecoverLogic(call *ast.CallExpr) bool {
 }
 
 // hasRecoverInFunction checks if a function body contains defer recover() logic
-func hasRecoverInFunction(body *ast.BlockStmt) bool {
+func hasRecoverInFunction(body *ast.BlockStmt, recoverFunctions map[string]bool) bool {
 	if body == nil {
 		return false
 	}
@@ -75,7 +92,7 @@ func hasRecoverInFunction(body *ast.BlockStmt) bool {
 	// Walk through all statements in the function body
 	for _, stmt := range body.List {
 		if deferStmt, ok := stmt.(*ast.DeferStmt); ok {
-			if hasRecoverInCall(deferStmt.Call) {
+			if hasRecoverInCall(deferStmt.Call, recoverFunctions) {
 				return true
 			}
 		}
@@ -84,7 +101,7 @@ func hasRecoverInFunction(body *ast.BlockStmt) bool {
 }
 
 // hasRecoverInCall recursively checks if a call contains recover()
-func hasRecoverInCall(call *ast.CallExpr) bool {
+func hasRecoverInCall(call *ast.CallExpr, recoverFunctions map[string]bool) bool {
 	if call == nil {
 		return false
 	}
@@ -92,6 +109,13 @@ func hasRecoverInCall(call *ast.CallExpr) bool {
 	// Direct recover() call
 	if ident, ok := call.Fun.(*ast.Ident); ok && ident.Name == "recover" {
 		return true
+	}
+
+	// Check if it's a call to a function that contains recover()
+	if ident, ok := call.Fun.(*ast.Ident); ok {
+		if recoverFunctions[ident.Name] {
+			return true
+		}
 	}
 
 	// Function literal that might contain recover - this is the key pattern
