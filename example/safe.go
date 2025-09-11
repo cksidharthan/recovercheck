@@ -25,6 +25,14 @@ func sameFileRecover() func() {
 	}
 }
 
+func anyName() func() {
+	return func() {
+		if r := recover(); r != nil {
+			log.Println("Recovered from panic:", r)
+		}
+	}
+}
+
 func SafeGoroutine2() {
 	go func() {
 		defer pkg.PanicRecover()
@@ -35,6 +43,13 @@ func SafeGoroutine2() {
 func SafeGoroutine3() {
 	go func() {
 		defer sameFileRecover()
+		panic("oh no")
+	}()
+}
+
+func SafeGoroutine4() {
+	go func() {
+		defer anyName()
 		panic("oh no")
 	}()
 }

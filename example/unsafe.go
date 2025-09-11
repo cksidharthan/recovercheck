@@ -14,15 +14,3 @@ func UnsafeFunction() {
 		panic("Another unrecovered panic")
 	}()
 }
-
-func SafeFunction() {
-	// This should NOT be flagged - has recovery
-	go func() {
-		defer func() {
-			if r := recover(); r != nil {
-				// Handle panic
-			}
-		}()
-		panic("This will be recovered")
-	}()
-}
