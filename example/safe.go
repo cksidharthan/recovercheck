@@ -1,12 +1,6 @@
-package testdata
+package example
 
 import "log"
-
-func UnsafeGoroutine() {
-	go func() {
-		panic("oh no")
-	}()
-}
 
 func SafeGoroutine() {
 	go func() {
