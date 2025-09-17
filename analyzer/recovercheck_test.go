@@ -73,6 +73,8 @@ func MixedScenarios() {
 
 // Helper function to parse test code and create inspector
 func parseTestCode(t testing.TB, code string) (*inspector.Inspector, *token.FileSet, *ast.File) {
+	t.Helper()
+
 	fset := token.NewFileSet()
 	file, err := parser.ParseFile(fset, "test.go", code, parser.ParseComments)
 	if err != nil {
