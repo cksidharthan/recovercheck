@@ -2,7 +2,6 @@ package analyzer
 
 import (
 	"go/ast"
-	"strings"
 
 	"golang.org/x/tools/go/analysis"
 	"golang.org/x/tools/go/analysis/passes/inspect"
@@ -135,32 +134,14 @@ func (r *RecoverAnalyzer) isRecoveryFunction(funcName string) bool {
 func (r *RecoverAnalyzer) isCrossPackageRecoveryFunction(sel *ast.SelectorExpr) bool {
 	funcName := sel.Sel.Name
 
-	// First check heuristics for common recovery function patterns
-	if r.hasRecoveryNaming(funcName) {
-		return true
-	}
-
 	// Then check if we have explicit knowledge of this cross-package function
 	if pkgIdent, ok := sel.X.(*ast.Ident); ok {
 		key := pkgIdent.Name + "." + funcName
-		if hasRecover, exists := r.recoverFunctions[key]; exists {
-			return hasRecover
-		}
-	}
-
-	return false
-}
-
-// hasRecoveryNaming uses naming patterns to identify likely recovery functions
-func (r *RecoverAnalyzer) hasRecoveryNaming(funcName string) bool {
-	lowerName := strings.ToLower(funcName)
-	recoveryKeywords := []string{"recover", "panic", "safe", "rescue", "catch"}
-
-	for _, keyword := range recoveryKeywords {
-		if strings.Contains(lowerName, keyword) {
+		if hasRecover, exists := r.recoverFunctions[key]; exists && hasRecover {
 			return true
 		}
 	}
+
 	return false
 }
 
@@ -188,6 +169,14 @@ func (r *RecoverAnalyzer) findRecoverCall(node ast.Node) bool {
 			if r.isDeferredRecovery(node) {
 				found = true
 				return false
+			}
+		case *ast.BlockStmt:
+			// search for CallExpr and DeferStmt within the block statements
+			for _, stmt := range node.List {
+				if r.findRecoverCall(stmt) {
+					found = true
+					return false
+				}
 			}
 		}
 		return true

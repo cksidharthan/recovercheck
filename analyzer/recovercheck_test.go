@@ -319,38 +319,6 @@ func Test() {
 	}
 }
 
-// TestRecoverAnalyzer_hasRecoveryNaming tests the hasRecoveryNaming method
-func TestRecoverAnalyzer_hasRecoveryNaming(t *testing.T) {
-	tests := []struct {
-		name     string
-		funcName string
-		expected bool
-	}{
-		{"recover in name", "recoverFromPanic", true},
-		{"panic in name", "handlePanic", true},
-		{"safe in name", "safeExecute", true},
-		{"rescue in name", "rescueOperation", true},
-		{"catch in name", "catchError", true},
-		{"uppercase recover", "RecoverHandler", true},
-		{"mixed case", "PanicRecover", true},
-		{"no recovery keywords", "normalFunction", false},
-		{"partial match", "coverage", false}, // "recover" is substring but not recovery-related
-	}
-
-	analyzer := &RecoverAnalyzer{
-		recoverFunctions: make(map[string]bool),
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			result := analyzer.hasRecoveryNaming(tt.funcName)
-			if result != tt.expected {
-				t.Errorf("Expected hasRecoveryNaming(%s) to return %v, got %v", tt.funcName, tt.expected, result)
-			}
-		})
-	}
-}
-
 // TestRecoverAnalyzer_containsRecover tests the containsRecover method
 func TestRecoverAnalyzer_containsRecover(t *testing.T) {
 	tests := []struct {
@@ -559,6 +527,65 @@ func NestedGoroutines() {
 			// Should not panic
 			analyzer.AnalyzeFunctions(collector.FunctionDecls)
 			analyzer.AnalyzeGoroutines(collector.GoStatements)
+		})
+	}
+}
+
+func TestRecoverAnalyzer_isDeferredRecovery_crossPackage(t *testing.T) {
+	tests := []struct {
+		name     string
+		code     string
+		expected bool
+	}{
+		{
+			name: "defer cross-package recovery function",
+			code: `package test
+import "pkg"
+func Test() {
+	defer pkg.SafeFunction()
+}`,
+			expected: true,
+		},
+		{
+			name: "defer cross-package non-recovery function",
+			code: `package test
+import "pkg"
+func Test() {
+	defer pkg.DoSomething()
+}`,
+			expected: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			insp, fset, _ := parseTestCode(t, tt.code)
+			pass := createMockPass(t, fset, insp)
+
+			analyzer := &RecoverAnalyzer{
+				pass:             pass,
+				recoverFunctions: make(map[string]bool),
+			}
+
+			// Find the defer statement in the AST
+			var deferStmt *ast.DeferStmt
+			_, _, file := parseTestCode(t, tt.code)
+			ast.Inspect(file, func(n ast.Node) bool {
+				if ds, ok := n.(*ast.DeferStmt); ok {
+					deferStmt = ds
+					return false
+				}
+				return true
+			})
+
+			if deferStmt == nil {
+				t.Fatal("No defer statement found")
+			}
+
+			result := analyzer.isDeferredRecovery(deferStmt)
+			if result != tt.expected {
+				t.Errorf("Expected isDeferredRecovery to return %v, got %v", tt.expected, result)
+			}
 		})
 	}
 }
