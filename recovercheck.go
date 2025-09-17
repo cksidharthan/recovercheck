@@ -1,4 +1,4 @@
-package analyzer
+package recovercheck
 
 import (
 	"go/ast"
@@ -11,10 +11,10 @@ import (
 	"golang.org/x/tools/go/ast/inspector"
 )
 
-// RecoverAnalyzer holds the state and methods for analyzing recover patterns
-type RecoverAnalyzer struct {
-	pass             *analysis.Pass
-	recoverFunctions map[string]bool // funcName -> hasRecover
+// Analyzer holds the state and methods for analyzing recover patterns
+type Analyzer struct {
+	Pass             *analysis.Pass
+	RecoverFunctions map[string]bool // funcName -> hasRecover
 }
 
 // NodeCollector collects AST nodes for analysis
@@ -57,9 +57,9 @@ func New() *analysis.Analyzer {
 }
 
 func run(pass *analysis.Pass) (any, error) {
-	analyzer := &RecoverAnalyzer{
-		pass:             pass,
-		recoverFunctions: make(map[string]bool),
+	analyzer := &Analyzer{
+		Pass:             pass,
+		RecoverFunctions: make(map[string]bool),
 	}
 
 	insp := pass.ResultOf[inspect.Analyzer].(*inspector.Inspector)
@@ -67,7 +67,6 @@ func run(pass *analysis.Pass) (any, error) {
 	// Collect all relevant nodes
 	nodes := CollectNodes(insp)
 
-	// Analyze in a more testable way
 	analyzer.AnalyzeFunctions(nodes.FunctionDecls)
 	analyzer.AnalyzeGoroutines(nodes.GoStatements)
 
@@ -75,44 +74,44 @@ func run(pass *analysis.Pass) (any, error) {
 }
 
 // AnalyzeFunctions processes all function declarations
-func (r *RecoverAnalyzer) AnalyzeFunctions(functions []*ast.FuncDecl) {
+func (r *Analyzer) AnalyzeFunctions(functions []*ast.FuncDecl) {
 	for _, funcDecl := range functions {
 		r.analyzeFunction(funcDecl)
 	}
 }
 
 // AnalyzeGoroutines processes all go statements
-func (r *RecoverAnalyzer) AnalyzeGoroutines(goStmts []*ast.GoStmt) {
+func (r *Analyzer) AnalyzeGoroutines(goStmts []*ast.GoStmt) {
 	for _, goStmt := range goStmts {
 		r.analyzeGoroutine(goStmt)
 	}
 }
 
 // analyzeFunction processes a single function declaration
-func (r *RecoverAnalyzer) analyzeFunction(funcDecl *ast.FuncDecl) {
+func (r *Analyzer) analyzeFunction(funcDecl *ast.FuncDecl) {
 	if funcDecl.Name == nil || funcDecl.Body == nil {
 		return
 	}
 
 	funcName := funcDecl.Name.Name
 	hasRecover := r.containsRecover(funcDecl.Body)
-	r.recoverFunctions[funcName] = hasRecover
+	r.RecoverFunctions[funcName] = hasRecover
 }
 
 // analyzeGoroutine processes a single go statement
-func (r *RecoverAnalyzer) analyzeGoroutine(goStmt *ast.GoStmt) {
+func (r *Analyzer) analyzeGoroutine(goStmt *ast.GoStmt) {
 	if goStmt.Call == nil {
-		r.pass.Reportf(goStmt.Pos(), "go statement without call expression")
+		r.Pass.Reportf(goStmt.Pos(), "go statement without call expression")
 		return
 	}
 
 	if !r.hasRecoveryLogic(goStmt.Call) {
-		r.pass.Reportf(goStmt.Pos(), "goroutine created without panic recovery")
+		r.Pass.Reportf(goStmt.Pos(), "goroutine created without panic recovery")
 	}
 }
 
 // hasRecoveryLogic determines if a function call includes panic recovery
-func (r *RecoverAnalyzer) hasRecoveryLogic(call *ast.CallExpr) bool {
+func (r *Analyzer) hasRecoveryLogic(call *ast.CallExpr) bool {
 	switch fun := call.Fun.(type) {
 	case *ast.FuncLit:
 		return r.containsRecover(fun.Body)
@@ -125,8 +124,8 @@ func (r *RecoverAnalyzer) hasRecoveryLogic(call *ast.CallExpr) bool {
 }
 
 // isRecoveryFunction checks if a named function contains recovery logic
-func (r *RecoverAnalyzer) isRecoveryFunction(funcName string) bool {
-	if hasRecover, exists := r.recoverFunctions[funcName]; exists {
+func (r *Analyzer) isRecoveryFunction(funcName string) bool {
+	if hasRecover, exists := r.RecoverFunctions[funcName]; exists {
 		return hasRecover
 	}
 	// Unknown functions are assumed unsafe
@@ -134,22 +133,22 @@ func (r *RecoverAnalyzer) isRecoveryFunction(funcName string) bool {
 }
 
 // isCrossPackageRecoveryFunction handles pkg.Function() calls
-func (r *RecoverAnalyzer) isCrossPackageRecoveryFunction(sel *ast.SelectorExpr) bool {
+func (r *Analyzer) isCrossPackageRecoveryFunction(sel *ast.SelectorExpr) bool {
 	funcName := sel.Sel.Name
 
 	// Check if we have explicit knowledge of this cross-package function
 	if pkgIdent, ok := sel.X.(*ast.Ident); ok {
 		key := pkgIdent.Name + "." + funcName
-		if hasRecover, exists := r.recoverFunctions[key]; exists {
+		if hasRecover, exists := r.RecoverFunctions[key]; exists {
 			return hasRecover
 		}
 
 		// Try to find the actual function definition in the imported package
 		if r.analyzeCrossPackageFunction(pkgIdent.Name, funcName) {
-			r.recoverFunctions[key] = true
+			r.RecoverFunctions[key] = true
 			return true
 		} else {
-			r.recoverFunctions[key] = false
+			r.RecoverFunctions[key] = false
 			return false
 		}
 	}
@@ -158,14 +157,14 @@ func (r *RecoverAnalyzer) isCrossPackageRecoveryFunction(sel *ast.SelectorExpr) 
 }
 
 // analyzeCrossPackageFunction analyzes a function from an imported package
-func (r *RecoverAnalyzer) analyzeCrossPackageFunction(pkgName, funcName string) bool {
+func (r *Analyzer) analyzeCrossPackageFunction(pkgName, funcName string) bool {
 	// Get the package object from the type info
-	if r.pass.TypesInfo == nil {
+	if r.Pass.TypesInfo == nil {
 		return false
 	}
 
 	// Look for the package in the current scope
-	for _, pkg := range r.pass.Pkg.Imports() {
+	for _, pkg := range r.Pass.Pkg.Imports() {
 		if pkg.Name() == pkgName {
 			// Look for the function in the package scope
 			if obj := pkg.Scope().Lookup(funcName); obj != nil {
@@ -187,10 +186,10 @@ func (r *RecoverAnalyzer) analyzeCrossPackageFunction(pkgName, funcName string) 
 }
 
 // analyzeFunctionFromPosition finds and analyzes a function from an imported package
-func (r *RecoverAnalyzer) analyzeFunctionFromPosition(pkg *types.Package, funcName string, pos token.Pos) bool {
+func (r *Analyzer) analyzeFunctionFromPosition(pkg *types.Package, funcName string, pos token.Pos) bool {
 	// Get the file set from the analysis pass
-	fset := r.pass.Fset
-	
+	fset := r.Pass.Fset
+
 	// Get the position information
 	position := fset.Position(pos)
 	if !position.IsValid() {
@@ -225,14 +224,13 @@ func (r *RecoverAnalyzer) analyzeFunctionFromPosition(pkg *types.Package, funcNa
 	return false
 }
 
-
 // containsRecover performs a deep search for recover() calls in any AST node
-func (r *RecoverAnalyzer) containsRecover(node ast.Node) bool {
+func (r *Analyzer) containsRecover(node ast.Node) bool {
 	return r.findRecoverCall(node)
 }
 
 // findRecoverCall recursively searches for recover() calls
-func (r *RecoverAnalyzer) findRecoverCall(node ast.Node) bool {
+func (r *Analyzer) findRecoverCall(node ast.Node) bool {
 	found := false
 
 	ast.Inspect(node, func(n ast.Node) bool {
@@ -267,7 +265,7 @@ func (r *RecoverAnalyzer) findRecoverCall(node ast.Node) bool {
 }
 
 // isRecoverCall checks if a call expression is a direct recover() call
-func (r *RecoverAnalyzer) isRecoverCall(call *ast.CallExpr) bool {
+func (r *Analyzer) isRecoverCall(call *ast.CallExpr) bool {
 	if ident, ok := call.Fun.(*ast.Ident); ok {
 		return ident.Name == "recover"
 	}
@@ -275,7 +273,7 @@ func (r *RecoverAnalyzer) isRecoverCall(call *ast.CallExpr) bool {
 }
 
 // isDeferredRecovery checks if a defer statement contains recovery logic
-func (r *RecoverAnalyzer) isDeferredRecovery(deferStmt *ast.DeferStmt) bool {
+func (r *Analyzer) isDeferredRecovery(deferStmt *ast.DeferStmt) bool {
 	if deferStmt.Call == nil {
 		return false
 	}

@@ -1,10 +1,10 @@
 package main
 
 import (
-	"github.com/cksidharthan/recovercheck/analyzer"
+	"github.com/cksidharthan/recovercheck"
 	"golang.org/x/tools/go/analysis/singlechecker"
 )
 
 func main() {
-	singlechecker.Main(analyzer.New())
+	singlechecker.Main(recovercheck.New())
 }

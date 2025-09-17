@@ -1,9 +1,9 @@
-package example
+package recovercheck
 
 import (
 	"log"
 
-	"github.com/cksidharthan/recovercheck/example/pkg"
+	"recovercheck/pkg"
 )
 
 func SafeGoroutine() {
