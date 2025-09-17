@@ -14,7 +14,7 @@ builds:
     # Binary name
     binary: recovercheck
     # Main package path
-    main: cmd/recovercheck
+    main: ./cmd/recovercheck
 
 archives:
   - format: tar.gz
