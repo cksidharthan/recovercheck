@@ -1,0 +1,87 @@
+# .goreleaser.yml
+builds:
+  - env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - darwin
+      - windows
+    goarch:
+      - amd64
+      - arm64
+    ldflags:
+      - -s -w -X main.version={{.Version}} -X main.commit={{.Commit}} -X main.date={{.Date}}
+    # Binary name
+    binary: recovercheck
+    # Main package path
+    main: .
+
+archives:
+  - format: tar.gz
+    name_template: >-
+      {{ .ProjectName }}_
+      {{- title .Os }}_
+      {{- if eq .Arch "amd64" }}x86_64
+      {{- else if eq .Arch "386" }}i386
+      {{- else }}{{ .Arch }}{{ end }}
+      {{- if .Arm }}v{{ .Arm }}{{ end }}
+    format_overrides:
+      - goos: windows
+        format: zip
+    files:
+      - LICENSE
+      - README.md
+
+checksum:
+  name_template: 'checksums.txt'
+
+snapshot:
+  name_template: "{{ incpatch .Version }}-next"
+
+changelog:
+  sort: asc
+  filters:
+    exclude:
+      - '^docs:'
+      - '^test:'
+      - '^ci:'
+      - Merge pull request
+      - Merge branch
+
+brews:
+  - name: recovercheck
+    repository:
+      owner: cksidharthan  # Replace with your GitHub username
+      name: homebrew-tap           # This will create a homebrew-tap repository
+      token: "{{ .Env.GITHUB_TOKEN }}"
+    
+    # Git author used to commit to the repository
+    commit_author:
+      name: Sidharthan Kamaraj
+      email: csidharthank@gmail.com
+    
+    # The project homepage
+    homepage: "https://github.com/cksidharthan/recovercheck"
+    
+    # Your app's description
+    description: "A tool to check for panic recovery in Go code"
+    
+    # Custom installation caveats
+    caveats: |
+      recovercheck is a tool to check for panic recovery in Go code.
+      Run 'recovercheck' to start the tool.
+    
+    # Custom installation instructions
+    install: |
+      bin.install "recovercheck"
+    
+    # Testing instructions that will be in the brew formula
+    test: |
+      system "#{bin}/recovercheck", "--version"
+    
+    # Optional dependencies
+    dependencies:
+      - name: git
+      
+    # Specify license type
+    license: "MIT"
