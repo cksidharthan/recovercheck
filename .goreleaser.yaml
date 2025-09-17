@@ -14,7 +14,7 @@ builds:
     # Binary name
     binary: recovercheck
     # Main package path
-    main: .
+    main: cmd/recovercheck
 
 archives:
   - format: tar.gz
@@ -79,9 +79,5 @@ brews:
     test: |
       system "#{bin}/recovercheck", "--version"
     
-    # Optional dependencies
-    dependencies:
-      - name: git
-      
     # Specify license type
     license: "MIT"

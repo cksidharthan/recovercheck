@@ -6,6 +6,7 @@ import (
 	"recovercheck/pkg"
 )
 
+// SafeGoroutine demonstrates a goroutine with proper panic recovery
 func SafeGoroutine() {
 	go func() {
 		defer func() {
@@ -17,6 +18,7 @@ func SafeGoroutine() {
 	}()
 }
 
+// sameFileRecover is a recovery function defined in the same file
 func sameFileRecover() func() {
 	return func() {
 		if r := recover(); r != nil {
@@ -25,6 +27,7 @@ func sameFileRecover() func() {
 	}
 }
 
+// anyName is a recovery function with any name -- to check that the analyzer doesn't rely on the name
 func anyName() func() {
 	return func() {
 		if r := recover(); r != nil {
@@ -33,6 +36,7 @@ func anyName() func() {
 	}
 }
 
+// SafeGoroutine2 uses a recovery function from another package
 func SafeGoroutine2() {
 	go func() {
 		defer pkg.PanicRecover()
@@ -40,6 +44,7 @@ func SafeGoroutine2() {
 	}()
 }
 
+// SafeGoroutine3 uses a recovery function defined in the same file
 func SafeGoroutine3() {
 	go func() {
 		defer sameFileRecover()
@@ -47,6 +52,7 @@ func SafeGoroutine3() {
 	}()
 }
 
+// SafeGoroutine4 uses a recovery function with any name
 func SafeGoroutine4() {
 	go func() {
 		defer anyName()
