@@ -2,6 +2,9 @@ package analyzer
 
 import (
 	"go/ast"
+	"go/parser"
+	"go/token"
+	"go/types"
 
 	"golang.org/x/tools/go/analysis"
 	"golang.org/x/tools/go/analysis/passes/inspect"
@@ -134,16 +137,94 @@ func (r *RecoverAnalyzer) isRecoveryFunction(funcName string) bool {
 func (r *RecoverAnalyzer) isCrossPackageRecoveryFunction(sel *ast.SelectorExpr) bool {
 	funcName := sel.Sel.Name
 
-	// Then check if we have explicit knowledge of this cross-package function
+	// Check if we have explicit knowledge of this cross-package function
 	if pkgIdent, ok := sel.X.(*ast.Ident); ok {
 		key := pkgIdent.Name + "." + funcName
-		if hasRecover, exists := r.recoverFunctions[key]; exists && hasRecover {
+		if hasRecover, exists := r.recoverFunctions[key]; exists {
+			return hasRecover
+		}
+
+		// Try to find the actual function definition in the imported package
+		if r.analyzeCrossPackageFunction(pkgIdent.Name, funcName) {
+			r.recoverFunctions[key] = true
 			return true
+		} else {
+			r.recoverFunctions[key] = false
+			return false
 		}
 	}
 
 	return false
 }
+
+// analyzeCrossPackageFunction analyzes a function from an imported package
+func (r *RecoverAnalyzer) analyzeCrossPackageFunction(pkgName, funcName string) bool {
+	// Get the package object from the type info
+	if r.pass.TypesInfo == nil {
+		return false
+	}
+
+	// Look for the package in the current scope
+	for _, pkg := range r.pass.Pkg.Imports() {
+		if pkg.Name() == pkgName {
+			// Look for the function in the package scope
+			if obj := pkg.Scope().Lookup(funcName); obj != nil {
+				// Try to get the function declaration from the object
+				if funcObj, ok := obj.(*types.Func); ok {
+					// Get the position of the function to find its AST
+					pos := funcObj.Pos()
+					if pos.IsValid() {
+						// Find the function declaration in the imported package's files
+						return r.analyzeFunctionFromPosition(pkg, funcName, pos)
+					}
+				}
+			}
+		}
+	}
+
+	// If we can't find the package or function, assume it's unsafe
+	return false
+}
+
+// analyzeFunctionFromPosition finds and analyzes a function from an imported package
+func (r *RecoverAnalyzer) analyzeFunctionFromPosition(pkg *types.Package, funcName string, pos token.Pos) bool {
+	// Get the file set from the analysis pass
+	fset := r.pass.Fset
+	
+	// Get the position information
+	position := fset.Position(pos)
+	if !position.IsValid() {
+		return false
+	}
+
+	// Parse the file containing the function
+	file, err := parser.ParseFile(fset, position.Filename, nil, parser.ParseComments)
+	if err != nil {
+		// If we can't parse the file, assume it's unsafe
+		return false
+	}
+
+	// Find the function declaration in the parsed file
+	var funcDecl *ast.FuncDecl
+	ast.Inspect(file, func(n ast.Node) bool {
+		if fn, ok := n.(*ast.FuncDecl); ok {
+			if fn.Name != nil && fn.Name.Name == funcName {
+				funcDecl = fn
+				return false // Stop searching
+			}
+		}
+		return true
+	})
+
+	// If we found the function, analyze it for recovery logic
+	if funcDecl != nil && funcDecl.Body != nil {
+		return r.containsRecover(funcDecl.Body)
+	}
+
+	// If we can't find the function, assume it's unsafe
+	return false
+}
+
 
 // containsRecover performs a deep search for recover() calls in any AST node
 func (r *RecoverAnalyzer) containsRecover(node ast.Node) bool {

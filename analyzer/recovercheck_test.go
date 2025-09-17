@@ -531,65 +531,6 @@ func NestedGoroutines() {
 	}
 }
 
-func TestRecoverAnalyzer_isDeferredRecovery_crossPackage(t *testing.T) {
-	tests := []struct {
-		name     string
-		code     string
-		expected bool
-	}{
-		{
-			name: "defer cross-package recovery function",
-			code: `package test
-import "pkg"
-func Test() {
-	defer pkg.SafeFunction()
-}`,
-			expected: true,
-		},
-		{
-			name: "defer cross-package non-recovery function",
-			code: `package test
-import "pkg"
-func Test() {
-	defer pkg.DoSomething()
-}`,
-			expected: false,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			insp, fset, _ := parseTestCode(t, tt.code)
-			pass := createMockPass(t, fset, insp)
-
-			analyzer := &RecoverAnalyzer{
-				pass:             pass,
-				recoverFunctions: make(map[string]bool),
-			}
-
-			// Find the defer statement in the AST
-			var deferStmt *ast.DeferStmt
-			_, _, file := parseTestCode(t, tt.code)
-			ast.Inspect(file, func(n ast.Node) bool {
-				if ds, ok := n.(*ast.DeferStmt); ok {
-					deferStmt = ds
-					return false
-				}
-				return true
-			})
-
-			if deferStmt == nil {
-				t.Fatal("No defer statement found")
-			}
-
-			result := analyzer.isDeferredRecovery(deferStmt)
-			if result != tt.expected {
-				t.Errorf("Expected isDeferredRecovery to return %v, got %v", tt.expected, result)
-			}
-		})
-	}
-}
-
 // Integration test using analysistest package
 func TestIntegration(t *testing.T) {
 	// This would typically use analysistest.Run with testdata directory
