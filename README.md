@@ -4,7 +4,7 @@ A Go static analysis tool that finds goroutines created without panic recovery l
 
 ## Why?
 
-Unhandled panics in goroutines crash your entire program. recovercheck helps you catch these before they reach production.
+Unhandled panics in goroutines crash your goroutines. recovercheck helps you catch these before they reach production.
 
 ```go
 // ❌ Bad - will crash the program
@@ -25,8 +25,15 @@ go func() {
 
 ## Install
 
+Option 1: Install using go install
 ```bash
 go install github.com/cksidharthan/recovercheck@latest
+```
+
+Option 2: Install using homebrew
+```bash
+brew tap cksidharthan/homebrew-tap
+brew install recovercheck
 ```
 
 ## Usage

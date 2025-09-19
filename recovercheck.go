@@ -143,50 +143,42 @@ func (r *Analyzer) isCrossPackageRecoveryFunction(sel *ast.SelectorExpr) bool {
 			return hasRecover
 		}
 
-		// Try to find the actual function definition in the imported package
-		if r.analyzeCrossPackageFunction(pkgIdent.Name, funcName) {
-			r.RecoverFunctions[key] = true
-			return true
-		} else {
-			r.RecoverFunctions[key] = false
-			return false
+		// Use type information to resolve the actual package (handles both regular and aliased imports)
+		var hasRecovery bool
+		if r.Pass.TypesInfo != nil {
+			if obj, ok := r.Pass.TypesInfo.Uses[pkgIdent]; ok {
+				if pkgName, ok := obj.(*types.PkgName); ok {
+					hasRecovery = r.analyzeCrossPackageFunction(pkgName.Imported(), funcName)
+				}
+			}
 		}
+
+		r.RecoverFunctions[key] = hasRecovery
+		return hasRecovery
 	}
 
 	return false
 }
 
 // analyzeCrossPackageFunction analyzes a function from an imported package
-func (r *Analyzer) analyzeCrossPackageFunction(pkgName, funcName string) bool {
-	// Get the package object from the type info
-	if r.Pass.TypesInfo == nil {
-		return false
-	}
-
-	// Look for the package in the current scope
-	for _, pkg := range r.Pass.Pkg.Imports() {
-		if pkg.Name() == pkgName {
-			// Look for the function in the package scope
-			if obj := pkg.Scope().Lookup(funcName); obj != nil {
-				// Try to get the function declaration from the object
-				if funcObj, ok := obj.(*types.Func); ok {
-					// Get the position of the function to find its AST
-					pos := funcObj.Pos()
-					if pos.IsValid() {
-						// Find the function declaration in the imported package's files
-						return r.analyzeFunctionFromPosition(pkg, funcName, pos)
-					}
-				}
+func (r *Analyzer) analyzeCrossPackageFunction(pkg *types.Package, funcName string) bool {
+	// Look for the function in the package scope
+	if obj := pkg.Scope().Lookup(funcName); obj != nil {
+		// Try to get the function declaration from the object
+		if funcObj, ok := obj.(*types.Func); ok {
+			// Get the position of the function to find its AST
+			pos := funcObj.Pos()
+			if pos.IsValid() {
+				// Find the function declaration in the imported package's files
+				return r.analyzeFunctionFromPosition(funcName, pos)
 			}
 		}
 	}
-
-	// If we can't find the package or function, assume it's unsafe
 	return false
 }
 
 // analyzeFunctionFromPosition finds and analyzes a function from an imported package
-func (r *Analyzer) analyzeFunctionFromPosition(pkg *types.Package, funcName string, pos token.Pos) bool {
+func (r *Analyzer) analyzeFunctionFromPosition(funcName string, pos token.Pos) bool {
 	// Get the file set from the analysis pass
 	fset := r.Pass.Fset
 
