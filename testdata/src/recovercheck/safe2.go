@@ -2,8 +2,8 @@ package recovercheck
 
 import aliaspkg "recovercheck/pkg"
 
-// SafeGoroutineWithAlias uses a recovery function from another package with import alias
-func SafeGoroutineWithAlias() {
+// SafeGoroutineWithAliasImport uses a recovery function from another package with import alias
+func SafeGoroutineWithAliasImport() {
 	go func() {
 		defer aliaspkg.PanicRecover()
 		panic("oh no")
