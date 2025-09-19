@@ -19,8 +19,9 @@ type Analyzer struct {
 
 // NodeCollector collects AST nodes for analysis
 type NodeCollector struct {
-	FunctionDecls []*ast.FuncDecl
-	GoStatements  []*ast.GoStmt
+	FunctionDecls   []*ast.FuncDecl
+	GoStatements    []*ast.GoStmt
+	ErrgroupCalls   []*ast.CallExpr // errgroup.Group.Go() calls
 }
 
 // CollectNodes extracts relevant nodes from the AST for analysis
@@ -43,7 +44,32 @@ func CollectNodes(insp *inspector.Inspector) *NodeCollector {
 		return false
 	})
 
+	// Collect errgroup calls (method calls that might be errgroup.Group.Go())
+	insp.Nodes([]ast.Node{(*ast.CallExpr)(nil)}, func(node ast.Node, push bool) bool {
+		if push {
+			call := node.(*ast.CallExpr)
+			if isErrgroupGoCall(call) {
+				collector.ErrgroupCalls = append(collector.ErrgroupCalls, call)
+			}
+		}
+		return false
+	})
+
 	return collector
+}
+
+// isErrgroupGoCall checks if a call expression is an errgroup.Group.Go() call
+func isErrgroupGoCall(call *ast.CallExpr) bool {
+	// Look for method calls like g.Go() where g might be an errgroup.Group
+	if sel, ok := call.Fun.(*ast.SelectorExpr); ok {
+		// Check if the method name is "Go"
+		if sel.Sel.Name == "Go" {
+			// We'll do more sophisticated type checking later
+			// For now, assume any .Go() call might be errgroup
+			return true
+		}
+	}
+	return false
 }
 
 // New returns new recovercheck analyzer.
@@ -69,6 +95,7 @@ func run(pass *analysis.Pass) (any, error) {
 
 	analyzer.AnalyzeFunctions(nodes.FunctionDecls)
 	analyzer.AnalyzeGoroutines(nodes.GoStatements)
+	analyzer.AnalyzeErrgroupCalls(nodes.ErrgroupCalls)
 
 	return nil, nil
 }
@@ -84,6 +111,13 @@ func (r *Analyzer) AnalyzeFunctions(functions []*ast.FuncDecl) {
 func (r *Analyzer) AnalyzeGoroutines(goStmts []*ast.GoStmt) {
 	for _, goStmt := range goStmts {
 		r.analyzeGoroutine(goStmt)
+	}
+}
+
+// AnalyzeErrgroupCalls processes all errgroup.Group.Go() calls
+func (r *Analyzer) AnalyzeErrgroupCalls(calls []*ast.CallExpr) {
+	for _, call := range calls {
+		r.analyzeErrgroupCall(call)
 	}
 }
 
@@ -107,6 +141,27 @@ func (r *Analyzer) analyzeGoroutine(goStmt *ast.GoStmt) {
 
 	if !r.hasRecoveryLogic(goStmt.Call) {
 		r.Pass.Reportf(goStmt.Pos(), "goroutine created without panic recovery")
+	}
+}
+
+// analyzeErrgroupCall processes a single errgroup.Group.Go() call
+func (r *Analyzer) analyzeErrgroupCall(call *ast.CallExpr) {
+	// Errgroup.Go() calls take a function as their first argument
+	if len(call.Args) == 0 {
+		return
+	}
+
+	// The first argument should be a function literal that will be executed in a goroutine
+	if funcLit, ok := call.Args[0].(*ast.FuncLit); ok {
+		if !r.containsRecover(funcLit.Body) {
+			r.Pass.Reportf(call.Pos(), "errgroup goroutine created without panic recovery")
+		}
+	} else {
+		// If it's not a function literal, it might be a function reference
+		// We need to check if that function has recovery logic
+		if !r.hasRecoveryLogic(&ast.CallExpr{Fun: call.Args[0]}) {
+			r.Pass.Reportf(call.Pos(), "errgroup goroutine created without panic recovery")
+		}
 	}
 }
 
