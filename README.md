@@ -27,7 +27,7 @@ go func() {
 
 Option 1: Install using go install
 ```bash
-go install github.com/cksidharthan/recovercheck@latest
+go install github.com/cksidharthan/recovercheck/cmd/recovercheck@latest
 ```
 
 Option 2: Install using homebrew
@@ -42,21 +42,11 @@ brew install recovercheck
 # Check current directory
 recovercheck ./...
 
-# Check specific package
-recovercheck github.com/user/project/pkg
-
 # JSON output
 recovercheck -json ./...
 
 # Include test files
 recovercheck -test ./...
-```
-
-### go/analysis
-```go
-import "github.com/cksidharthan/recovercheck/analyzer"
-
-analyzer.New() // Use in your analysis tool
 ```
 
 ## License
