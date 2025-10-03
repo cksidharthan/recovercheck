@@ -5,16 +5,24 @@ import (
 	"go/parser"
 	"go/token"
 	"go/types"
+	"path/filepath"
+	"strings"
 
 	"golang.org/x/tools/go/analysis"
 	"golang.org/x/tools/go/analysis/passes/inspect"
 	"golang.org/x/tools/go/ast/inspector"
 )
 
+// Config holds configuration options for the analyzer
+type Config struct {
+	SkipTestFiles bool
+}
+
 // Analyzer holds the state and methods for analyzing recover patterns
 type Analyzer struct {
 	Pass             *analysis.Pass
 	RecoverFunctions map[string]bool // funcName -> hasRecover
+	Config           *Config
 }
 
 // NodeCollector collects AST nodes for analysis
@@ -74,18 +82,41 @@ func isErrgroupGoCall(call *ast.CallExpr) bool {
 
 // New returns new recovercheck analyzer.
 func New() *analysis.Analyzer {
-	return &analysis.Analyzer{
+	analyzer := &analysis.Analyzer{
 		Name:     "recovercheck",
 		Doc:      "Checks that goroutines have panic recovery logic",
 		Run:      run,
 		Requires: []*analysis.Analyzer{inspect.Analyzer},
 	}
+
+	// Add configuration flags
+	var skipTestFiles bool
+	analyzer.Flags.BoolVar(&skipTestFiles, "skip-test-files", false, "skip analysis of *_test.go files")
+
+	// Store the flag reference for later use
+	analyzer.Run = func(pass *analysis.Pass) (any, error) {
+		config := &Config{
+			SkipTestFiles: skipTestFiles,
+		}
+		return runWithConfig(pass, config)
+	}
+
+	return analyzer
 }
 
 func run(pass *analysis.Pass) (any, error) {
+	// Default config for backward compatibility
+	config := &Config{
+		SkipTestFiles: false,
+	}
+	return runWithConfig(pass, config)
+}
+
+func runWithConfig(pass *analysis.Pass, config *Config) (any, error) {
 	analyzer := &Analyzer{
 		Pass:             pass,
 		RecoverFunctions: make(map[string]bool),
+		Config:           config,
 	}
 
 	insp := pass.ResultOf[inspect.Analyzer].(*inspector.Inspector)
@@ -134,6 +165,11 @@ func (r *Analyzer) analyzeFunction(funcDecl *ast.FuncDecl) {
 
 // analyzeGoroutine processes a single go statement
 func (r *Analyzer) analyzeGoroutine(goStmt *ast.GoStmt) {
+	// Skip if this is a test file and skip-test-files is enabled
+	if r.shouldSkipFile(goStmt.Pos()) {
+		return
+	}
+
 	if goStmt.Call == nil {
 		r.Pass.Reportf(goStmt.Pos(), "go statement without call expression")
 		return
@@ -146,6 +182,11 @@ func (r *Analyzer) analyzeGoroutine(goStmt *ast.GoStmt) {
 
 // analyzeErrgroupCall processes a single errgroup.Group.Go() call
 func (r *Analyzer) analyzeErrgroupCall(call *ast.CallExpr) {
+	// Skip if this is a test file and skip-test-files is enabled
+	if r.shouldSkipFile(call.Pos()) {
+		return
+	}
+
 	// Errgroup.Go() calls take a function as their first argument
 	if len(call.Args) == 0 {
 		return
@@ -343,6 +384,25 @@ func (r *Analyzer) isDeferredRecovery(deferStmt *ast.DeferStmt) bool {
 	// Check for defer pkg.RecoveryFunc()
 	if sel, ok := deferStmt.Call.Fun.(*ast.SelectorExpr); ok {
 		return r.isCrossPackageRecoveryFunction(sel)
+	}
+
+	return false
+}
+
+// shouldSkipFile checks if a file should be skipped based on configuration
+func (r *Analyzer) shouldSkipFile(pos token.Pos) bool {
+	// Check for nil config to prevent panics in tests
+	if r.Config == nil {
+		return false
+	}
+
+	if r.Config.SkipTestFiles {
+		// Get the filename from the position
+		position := r.Pass.Fset.Position(pos)
+		filename := filepath.Base(position.Filename)
+		
+		// Check if it's a test file
+		return strings.HasSuffix(filename, "_test.go")
 	}
 
 	return false

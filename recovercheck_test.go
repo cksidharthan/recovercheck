@@ -284,6 +284,103 @@ func BenchmarkAnalyzeGoroutines(b *testing.B) {
 	}
 }
 
+func TestSkipTestFiles(t *testing.T) {
+	t.Run("flag_configuration", func(t *testing.T) {
+		analyzer := recovercheck.New()
+		
+		// Test that the flag exists and can be set
+		err := analyzer.Flags.Set("skip-test-files", "true")
+		if err != nil {
+			t.Fatalf("Failed to set skip-test-files flag: %v", err)
+		}
+		
+		// Test that the flag can be set to false
+		err = analyzer.Flags.Set("skip-test-files", "false")
+		if err != nil {
+			t.Fatalf("Failed to set skip-test-files flag to false: %v", err)
+		}
+	})
+	
+	t.Run("functional_test", func(t *testing.T) {
+		// Test code for a test file with unsafe goroutines
+		testCode := `package test
+import "testing"
+
+func TestUnsafeGoroutine(t *testing.T) {
+	go func() {
+		panic("test panic")
+	}()
+}`
+
+		// Parse the test code
+		fset := token.NewFileSet()
+		file, err := parser.ParseFile(fset, "test_test.go", testCode, parser.ParseComments)
+		if err != nil {
+			t.Fatalf("Failed to parse test code: %v", err)
+		}
+
+		insp := inspector.New([]*ast.File{file})
+		
+		// Count diagnostics without skip flag
+		var diagnosticsWithoutSkip []analysis.Diagnostic
+		passWithoutSkip := &analysis.Pass{
+			Analyzer: recovercheck.New(),
+			Fset:     fset,
+			Files:    []*ast.File{file},
+			ResultOf: map[*analysis.Analyzer]interface{}{
+				inspect.Analyzer: insp,
+			},
+			Report: func(diag analysis.Diagnostic) {
+				diagnosticsWithoutSkip = append(diagnosticsWithoutSkip, diag)
+			},
+		}
+
+		// Run analyzer without skip flag (default config)
+		_, err = recovercheck.New().Run(passWithoutSkip)
+		if err != nil {
+			t.Fatalf("Analyzer run failed: %v", err)
+		}
+
+		// Count diagnostics with skip flag enabled
+		var diagnosticsWithSkip []analysis.Diagnostic
+		analyzerWithSkip := recovercheck.New()
+		err = analyzerWithSkip.Flags.Set("skip-test-files", "true")
+		if err != nil {
+			t.Fatalf("Failed to set skip-test-files flag: %v", err)
+		}
+
+		passWithSkip := &analysis.Pass{
+			Analyzer: analyzerWithSkip,
+			Fset:     fset,
+			Files:    []*ast.File{file},
+			ResultOf: map[*analysis.Analyzer]interface{}{
+				inspect.Analyzer: insp,
+			},
+			Report: func(diag analysis.Diagnostic) {
+				diagnosticsWithSkip = append(diagnosticsWithSkip, diag)
+			},
+		}
+
+		// Run analyzer with skip flag
+		_, err = analyzerWithSkip.Run(passWithSkip)
+		if err != nil {
+			t.Fatalf("Analyzer run with skip flag failed: %v", err)
+		}
+
+		// Verify results
+		if len(diagnosticsWithoutSkip) == 0 {
+			t.Error("Expected to find diagnostics in test file without skip flag, but found none")
+		}
+
+		if len(diagnosticsWithSkip) > 0 {
+			t.Errorf("Expected no diagnostics in test file with skip flag, but found %d", len(diagnosticsWithSkip))
+		}
+
+		t.Logf("Without skip flag: %d diagnostics", len(diagnosticsWithoutSkip))
+		t.Logf("With skip flag: %d diagnostics", len(diagnosticsWithSkip))
+	})
+}
+
 func TestAll(t *testing.T) {
 	analysistest.Run(t, analysistest.TestData(), recovercheck.New(), "recovercheck")
 }
