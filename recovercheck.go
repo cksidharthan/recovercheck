@@ -13,8 +13,8 @@ import (
 	"golang.org/x/tools/go/ast/inspector"
 )
 
-// Config holds configuration options for the analyzer
-type Config struct {
+// RecovercheckSettings holds configuration options for the analyzer
+type RecovercheckSettings struct {
 	SkipTestFiles bool
 }
 
@@ -22,14 +22,14 @@ type Config struct {
 type Analyzer struct {
 	Pass             *analysis.Pass
 	RecoverFunctions map[string]bool // funcName -> hasRecover
-	Config           *Config
+	Settings         *RecovercheckSettings
 }
 
 // NodeCollector collects AST nodes for analysis
 type NodeCollector struct {
-	FunctionDecls   []*ast.FuncDecl
-	GoStatements    []*ast.GoStmt
-	ErrgroupCalls   []*ast.CallExpr // errgroup.Group.Go() calls
+	FunctionDecls []*ast.FuncDecl
+	GoStatements  []*ast.GoStmt
+	ErrgroupCalls []*ast.CallExpr // errgroup.Group.Go() calls
 }
 
 // CollectNodes extracts relevant nodes from the AST for analysis
@@ -95,7 +95,7 @@ func New() *analysis.Analyzer {
 
 	// Store the flag reference for later use
 	analyzer.Run = func(pass *analysis.Pass) (any, error) {
-		config := &Config{
+		config := &RecovercheckSettings{
 			SkipTestFiles: skipTestFiles,
 		}
 		return runWithConfig(pass, config)
@@ -106,17 +106,17 @@ func New() *analysis.Analyzer {
 
 func run(pass *analysis.Pass) (any, error) {
 	// Default config for backward compatibility
-	config := &Config{
+	config := &RecovercheckSettings{
 		SkipTestFiles: false,
 	}
 	return runWithConfig(pass, config)
 }
 
-func runWithConfig(pass *analysis.Pass, config *Config) (any, error) {
+func runWithConfig(pass *analysis.Pass, config *RecovercheckSettings) (any, error) {
 	analyzer := &Analyzer{
 		Pass:             pass,
 		RecoverFunctions: make(map[string]bool),
-		Config:           config,
+		Settings:         config,
 	}
 
 	insp := pass.ResultOf[inspect.Analyzer].(*inspector.Inspector)
@@ -392,15 +392,15 @@ func (r *Analyzer) isDeferredRecovery(deferStmt *ast.DeferStmt) bool {
 // shouldSkipFile checks if a file should be skipped based on configuration
 func (r *Analyzer) shouldSkipFile(pos token.Pos) bool {
 	// Check for nil config to prevent panics in tests
-	if r.Config == nil {
+	if r.Settings == nil {
 		return false
 	}
 
-	if r.Config.SkipTestFiles {
+	if r.Settings.SkipTestFiles {
 		// Get the filename from the position
 		position := r.Pass.Fset.Position(pos)
 		filename := filepath.Base(position.Filename)
-		
+
 		// Check if it's a test file
 		return strings.HasSuffix(filename, "_test.go")
 	}
