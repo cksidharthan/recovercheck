@@ -60,8 +60,12 @@ func parseTestCode(t testing.TB, code string) (*inspector.Inspector, *token.File
 func createMockPass(t testing.TB, fset *token.FileSet, insp *inspector.Inspector) *analysis.Pass {
 	t.Helper()
 
+	recovercheckSettings := &recovercheck.RecovercheckSettings{
+		SkipTestFiles: false,
+	}
+
 	return &analysis.Pass{
-		Analyzer: recovercheck.New(),
+		Analyzer: recovercheck.New(recovercheckSettings),
 		Fset:     fset,
 		ResultOf: map[*analysis.Analyzer]interface{}{
 			inspect.Analyzer: insp,
@@ -187,7 +191,11 @@ func TestFunc() {
 
 // TestNew tests the analyzer creation
 func TestNew(t *testing.T) {
-	analyzer := recovercheck.New()
+	recovercheckSettings := &recovercheck.RecovercheckSettings{
+		SkipTestFiles: false,
+	}
+
+	analyzer := recovercheck.New(recovercheckSettings)
 
 	if analyzer.Name != "recovercheck" {
 		t.Errorf("Expected analyzer name to be 'recovercheck', got '%s'", analyzer.Name)
@@ -284,22 +292,6 @@ func BenchmarkAnalyzeGoroutines(b *testing.B) {
 	}
 }
 
-func TestSkipTestFilesFlagConfiguration(t *testing.T) {
-	analyzer := recovercheck.New()
-
-	// Test that the flag exists and can be set
-	err := analyzer.Flags.Set("skip-test-files", "true")
-	if err != nil {
-		t.Fatalf("Failed to set skip-test-files flag: %v", err)
-	}
-
-	// Test that the flag can be set to false
-	err = analyzer.Flags.Set("skip-test-files", "false")
-	if err != nil {
-		t.Fatalf("Failed to set skip-test-files flag to false: %v", err)
-	}
-}
-
 func TestSkipTestFilesFunctional(t *testing.T) {
 	// Test code for a test file with unsafe goroutines
 	testCode := `package test
@@ -323,8 +315,11 @@ func TestUnsafeGoroutine(t *testing.T) {
 	t.Run("without_skip_flag", func(t *testing.T) {
 		// Count diagnostics without skip flag
 		var diagnostics []analysis.Diagnostic
+
+		recovercheckSettings := &recovercheck.RecovercheckSettings{}
+
 		pass := &analysis.Pass{
-			Analyzer: recovercheck.New(),
+			Analyzer: recovercheck.New(recovercheckSettings),
 			Fset:     fset,
 			Files:    []*ast.File{file},
 			ResultOf: map[*analysis.Analyzer]any{
@@ -336,7 +331,7 @@ func TestUnsafeGoroutine(t *testing.T) {
 		}
 
 		// Run analyzer without skip flag (default config)
-		_, err = recovercheck.New().Run(pass)
+		_, err = recovercheck.New(recovercheckSettings).Run(pass)
 		if err != nil {
 			t.Fatalf("Analyzer run failed: %v", err)
 		}
@@ -352,11 +347,12 @@ func TestUnsafeGoroutine(t *testing.T) {
 	t.Run("with_skip_flag", func(t *testing.T) {
 		// Count diagnostics with skip flag enabled
 		var diagnostics []analysis.Diagnostic
-		analyzer := recovercheck.New()
-		err := analyzer.Flags.Set("skip-test-files", "true")
-		if err != nil {
-			t.Fatalf("Failed to set skip-test-files flag: %v", err)
+
+		recovercheckSettings := &recovercheck.RecovercheckSettings{
+			SkipTestFiles: true,
 		}
+
+		analyzer := recovercheck.New(recovercheckSettings)
 
 		pass := &analysis.Pass{
 			Analyzer: analyzer,
@@ -386,5 +382,6 @@ func TestUnsafeGoroutine(t *testing.T) {
 }
 
 func TestAll(t *testing.T) {
-	analysistest.Run(t, analysistest.TestData(), recovercheck.New(), "recovercheck")
+	recovercheckSettings := &recovercheck.RecovercheckSettings{}
+	analysistest.Run(t, analysistest.TestData(), recovercheck.New(recovercheckSettings), "recovercheck")
 }
