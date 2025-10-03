@@ -1,4 +1,5 @@
-# .goreleaser.yml
+version: 2
+
 builds:
   - env:
       - CGO_ENABLED=0
@@ -17,8 +18,7 @@ builds:
     main: ./cmd/recovercheck
 
 archives:
-  - format: tar.gz
-    name_template: >-
+  - name_template: >-
       {{ .ProjectName }}_
       {{- title .Os }}_
       {{- if eq .Arch "amd64" }}x86_64
@@ -26,8 +26,7 @@ archives:
       {{- else }}{{ .Arch }}{{ end }}
       {{- if .Arm }}v{{ .Arm }}{{ end }}
     format_overrides:
-      - goos: windows
-        format: zip
+      - formats: ['tar.gz', 'zip']
     files:
       - LICENSE
       - README.md
@@ -36,7 +35,7 @@ checksum:
   name_template: 'checksums.txt'
 
 snapshot:
-  name_template: "{{ incpatch .Version }}-next"
+  version_template: "{{ incpatch .Version }}-next"
 
 changelog:
   sort: asc
@@ -48,7 +47,7 @@ changelog:
       - Merge pull request
       - Merge branch
 
-brews:
+homebrew_casks:
   - name: recovercheck
     repository:
       owner: cksidharthan  # Replace with your GitHub username
@@ -70,14 +69,6 @@ brews:
     caveats: |
       recovercheck is a tool to check for panic recovery in Go code.
       Run 'recovercheck' to start the tool.
-    
-    # Custom installation instructions
-    install: |
-      bin.install "recovercheck"
-    
-    # Testing instructions that will be in the brew formula
-    test: |
-      system "#{bin}/recovercheck", "--version"
     
     # Specify license type
     license: "MIT"
