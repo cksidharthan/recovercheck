@@ -1,6 +1,6 @@
 module github.com/cksidharthan/recovercheck
 
-go 1.25.1
+go 1.24.0
 
 require golang.org/x/tools v0.37.0
 
