@@ -30,12 +30,6 @@ Option 1: Install using go install
 go install github.com/cksidharthan/recovercheck/cmd/recovercheck@latest
 ```
 
-Option 2: Install using homebrew
-```bash
-brew tap cksidharthan/homebrew-tap
-brew install recovercheck
-```
-
 ## Usage
 
 ```bash
