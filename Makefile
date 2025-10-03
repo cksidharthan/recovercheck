@@ -12,4 +12,4 @@ check:
 	golangci-lint run
 
 build:
-	go build -ldflags "-s -w" -trimpath ./cmd/recovercheck/
+	go build -o dist/recovercheck -ldflags "-s -w" -trimpath ./cmd/recovercheck

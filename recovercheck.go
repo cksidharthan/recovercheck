@@ -81,38 +81,21 @@ func isErrgroupGoCall(call *ast.CallExpr) bool {
 }
 
 // New returns new recovercheck analyzer.
-func New() *analysis.Analyzer {
+func New(settings *RecovercheckSettings) *analysis.Analyzer {
 	analyzer := &analysis.Analyzer{
 		Name:     "recovercheck",
 		Doc:      "Checks that goroutines have panic recovery logic",
-		Run:      run,
 		Requires: []*analysis.Analyzer{inspect.Analyzer},
 	}
 
-	// Add configuration flags
-	var skipTestFiles bool
-	analyzer.Flags.BoolVar(&skipTestFiles, "skip-test-files", false, "skip analysis of *_test.go files")
-
-	// Store the flag reference for later use
 	analyzer.Run = func(pass *analysis.Pass) (any, error) {
-		config := &RecovercheckSettings{
-			SkipTestFiles: skipTestFiles,
-		}
-		return runWithConfig(pass, config)
+		return run(pass, settings)
 	}
 
 	return analyzer
 }
 
-func run(pass *analysis.Pass) (any, error) {
-	// Default config for backward compatibility
-	config := &RecovercheckSettings{
-		SkipTestFiles: false,
-	}
-	return runWithConfig(pass, config)
-}
-
-func runWithConfig(pass *analysis.Pass, config *RecovercheckSettings) (any, error) {
+func run(pass *analysis.Pass, config *RecovercheckSettings) (any, error) {
 	analyzer := &Analyzer{
 		Pass:             pass,
 		RecoverFunctions: make(map[string]bool),

@@ -34,5 +34,4 @@ Test files often contain intentional unsafe goroutines for testing error conditi
 
 - The flag checks the filename suffix `_test.go` to determine if a file should be skipped
 - Skipping is applied at the goroutine and errgroup analysis level
-- When enabled, no diagnostics will be reported for goroutines found in test files
 - The default behavior is to analyze all files (skip-test-files=false)
