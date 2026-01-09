@@ -39,21 +39,12 @@ recovercheck ./...
 # JSON output
 recovercheck -json ./...
 
-# Include test files
-recovercheck -test ./...
+# Exclude test files
+recovercheck -test=false ./...
 ```
 
 ## Configuration
 recovercheck uses go/analysis flags for configuration. Run `recovercheck -h` to see all available options.
-
-In addition to the default flags, recovercheck supports the following custom flag:
-- `-skip-test-files`: Skip analysis of `*_test.go` files. Default is `false`.
-
-```bash
-recovercheck -skip-test-files=true ./...
-```
-
-For More details, see [CONFIGURATION.md](CONFIGURATION.md).
 
 ## License
 
