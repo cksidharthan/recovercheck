@@ -5,8 +5,6 @@ import (
 	"go/parser"
 	"go/token"
 	"go/types"
-	"path/filepath"
-	"strings"
 
 	"golang.org/x/tools/go/analysis"
 	"golang.org/x/tools/go/analysis/passes/inspect"
@@ -15,7 +13,7 @@ import (
 
 // RecovercheckSettings holds configuration options for the analyzer
 type RecovercheckSettings struct {
-	SkipTestFiles bool
+	// to be used in future.
 }
 
 // Analyzer holds the state and methods for analyzing recover patterns
@@ -148,11 +146,6 @@ func (r *Analyzer) analyzeFunction(funcDecl *ast.FuncDecl) {
 
 // analyzeGoroutine processes a single go statement
 func (r *Analyzer) analyzeGoroutine(goStmt *ast.GoStmt) {
-	// Skip if this is a test file and skip-test-files is enabled
-	if r.shouldSkipFile(goStmt.Pos()) {
-		return
-	}
-
 	if goStmt.Call == nil {
 		r.Pass.Reportf(goStmt.Pos(), "go statement without call expression")
 		return
@@ -165,11 +158,6 @@ func (r *Analyzer) analyzeGoroutine(goStmt *ast.GoStmt) {
 
 // analyzeErrgroupCall processes a single errgroup.Group.Go() call
 func (r *Analyzer) analyzeErrgroupCall(call *ast.CallExpr) {
-	// Skip if this is a test file and skip-test-files is enabled
-	if r.shouldSkipFile(call.Pos()) {
-		return
-	}
-
 	// Errgroup.Go() calls take a function as their first argument
 	if len(call.Args) == 0 {
 		return
@@ -367,25 +355,6 @@ func (r *Analyzer) isDeferredRecovery(deferStmt *ast.DeferStmt) bool {
 	// Check for defer pkg.RecoveryFunc()
 	if sel, ok := deferStmt.Call.Fun.(*ast.SelectorExpr); ok {
 		return r.isCrossPackageRecoveryFunction(sel)
-	}
-
-	return false
-}
-
-// shouldSkipFile checks if a file should be skipped based on configuration
-func (r *Analyzer) shouldSkipFile(pos token.Pos) bool {
-	// Check for nil config to prevent panics in tests
-	if r.Settings == nil {
-		return false
-	}
-
-	if r.Settings.SkipTestFiles {
-		// Get the filename from the position
-		position := r.Pass.Fset.Position(pos)
-		filename := filepath.Base(position.Filename)
-
-		// Check if it's a test file
-		return strings.HasSuffix(filename, "_test.go")
 	}
 
 	return false
